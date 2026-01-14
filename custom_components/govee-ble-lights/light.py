@@ -293,27 +293,24 @@ class GoveeBluetoothLight(LightEntity):
         red, green, blue = rgb_color
 
         if self._is_segmented:
-            # H617C and similar: set device brightness to MAX first
-            # This ensures the hardware brightness is at 100%, then we use RGB scaling
-            max_brightness_cmd = self._prepareSinglePacketData(LedCommand.BRIGHTNESS, [0xFE])
-            commands.extend([max_brightness_cmd, max_brightness_cmd, max_brightness_cmd])
+            # H617C and similar: send brightness command (3x for reliability)
+            # Map HA brightness (0-255) to device range (0x14-0xFE)
+            if brightness <= 0:
+                device_brightness = 0x14
+            else:
+                device_brightness = int(0x14 + (brightness * (0xFE - 0x14) / 255))
+                device_brightness = min(0xFE, max(0x14, device_brightness))
+            brightness_cmd = self._prepareSinglePacketData(LedCommand.BRIGHTNESS, [device_brightness])
+            commands.extend([brightness_cmd, brightness_cmd, brightness_cmd])
 
-            # Use RGB scaling for actual brightness control
-            # Minimum brightness ~10% to preserve color visibility
-            min_brightness = 25  # ~10% of 255
-            effective_brightness = max(min_brightness, brightness)
-            scale = effective_brightness / 255.0
-
-            # Scale while preserving color ratios
-            scaled_r = max(1, int(red * scale))
-            scaled_g = max(1, int(green * scale))
-            scaled_b = max(1, int(blue * scale))
-
-            # Segmented models use mode 0x15 - send 3x for reliability
-            color_cmd = self._prepareSinglePacketData(LedCommand.COLOR,
-                                                      [LedMode.SEGMENTS, 0x01, scaled_r, scaled_g, scaled_b, 0x00, 0x00, 0x00,
-                                                       0x00, 0x00, 0xFF, 0x7F])
-            commands.extend([color_cmd, color_cmd, color_cmd])
+            # Only send color command if user is explicitly setting color NOW
+            # This prevents overwriting the device's current color when only brightness changes
+            if ATTR_RGB_COLOR in kwargs:
+                # Segmented models use mode 0x15 - send 3x for reliability
+                color_cmd = self._prepareSinglePacketData(LedCommand.COLOR,
+                                                          [LedMode.SEGMENTS, 0x01, red, green, blue, 0x00, 0x00, 0x00,
+                                                           0x00, 0x00, 0xFF, 0x7F])
+                commands.extend([color_cmd, color_cmd, color_cmd])
         elif self._is_rgbic:
             # RGBIC models: use brightness command with mapped range
             if ATTR_BRIGHTNESS in kwargs:
