@@ -293,8 +293,12 @@ class GoveeBluetoothLight(LightEntity):
         red, green, blue = rgb_color
 
         if self._is_segmented:
-            # H617C and similar: brightness command doesn't work reliably
-            # Instead, scale RGB values by brightness
+            # H617C and similar: set device brightness to MAX first
+            # This ensures the hardware brightness is at 100%, then we use RGB scaling
+            max_brightness_cmd = self._prepareSinglePacketData(LedCommand.BRIGHTNESS, [0xFE])
+            commands.extend([max_brightness_cmd, max_brightness_cmd, max_brightness_cmd])
+
+            # Use RGB scaling for actual brightness control
             # Minimum brightness ~10% to preserve color visibility
             min_brightness = 25  # ~10% of 255
             effective_brightness = max(min_brightness, brightness)
